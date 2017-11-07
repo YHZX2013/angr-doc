@@ -90,7 +90,7 @@ def get_gadgets():
         # Here, we set up a stack full of symbolic data so that we can resolve it for the necessary values later.
         # We enable history tracking, since we'll use recorded actions to detect the input checks. Also, since
         # we'll trigger random syscall gadgets, we tell angr to ignore unknown syscalls.
-        state = p.factory.blank_state(add_options={angr.options.TRACK_ACTION_HISTORY, angr.options.BYPASS_UNSUPPORTED_SYSCALL})
+        state = p.factory.blank_state(add_options=angr.options.refs | angr.options.resilience)
         stack_words = [ claripy.BVS('w%d'%i, 64) for i in range(20) ]
         state.memory.store(state.regs.rsp, claripy.Concat(*stack_words))
 
@@ -131,13 +131,13 @@ def get_gadgets():
         # we save off inputs needed to pass the checks for any given gadget before the start of the checks.
         # Since the checks pop data in order, we can just concat all the checked input.
         for a in range(f.addr, start_of_checks):
-            guard_solutions[a] = good_state.se.any_str(claripy.Concat(*symbolic_guard_guys))
+            guard_solutions[a] = good_state.se.eval(claripy.Concat(*symbolic_guard_guys), cast_to=str)
 
         #
         # With the checks recovered, we now overwrite them with a ret, so that angrop considers the gadgets
         # valid.
         #
-        p.loader.main_bin.memory.write_bytes(start_of_checks, '\xc3')
+        p.loader.memory.write_bytes(start_of_checks, '\xc3')
         p.factory.default_engine.clear_cache()
 
     #

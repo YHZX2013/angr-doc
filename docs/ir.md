@@ -1,6 +1,9 @@
 # Intermediate Representation
 
-Because angr deals with widely diverse architectures, it must carry out its analysis on an intermediate representation. We use Valgrind's IR, "VEX", for this. The VEX IR abstracts away several architecture differences when dealing with different architectures, allowing a single analysis to be run on all of them:
+In order to be able to analyze and execute machine code from different CPU architectures, such as MIPS, ARM, and PowerPC in addition to the classic x86, angr performs most of its analysis on an _intermediate representation_, a structured description of the fundamental actions performed by each CPU instruction.
+By understanding angr's IR, VEX \(which we borrowed from Valgrind\), you will be able to write very quick static analyses and have a better understanding of how angr works.
+
+The VEX IR abstracts away several architecture differences when dealing with different architectures, allowing a single analysis to be run on all of them:
 
 - **Register names.** The quantity and names of registers differ between architectures, but modern CPU designs hold to a common theme: each CPU contains several general purpose registers, a register to hold the stack pointer, a set of registers to store condition flags, and so forth. The IR provides a consistent, abstracted interface to registers on different platforms. Specifically, VEX models the registers as a separate memory space, with integer offsets (e.g., AMD64's `rax` is stored starting at address 16 in this memory space).
 - **Memory access.** Different architectures access memory in different ways. For example, ARM can access memory in both little-endian and big-endian modes. The IR abstracts away these differences.
@@ -54,7 +57,7 @@ Becomes this VEX IR:
     PUT(16) = t3
     PUT(68) = 0x59FC8:I32
 
-Now that you understand VEX, you can actually play with some VEX in angr: We use a library called PyVEX (https://github.com/angr/pyvex) that exposes VEX into Python. In addition, PyVEX implements its own pretty-printing so that it can show register names instead of register offsets in PUT and GET instructions.
+Now that you understand VEX, you can actually play with some VEX in angr: We use a library called [PyVEX](https://github.com/angr/pyvex) that exposes VEX into Python. In addition, PyVEX implements its own pretty-printing so that it can show register names instead of register offsets in PUT and GET instructions.
 
 PyVEX is accessable through angr through the `Project.factory.block` interface. There are many different representations you could use to access syntactic properties of a block of code, but they all have in common the trait of analyzing a particular sequence of bytes. Through the `factory.block` constructor, you get a `Block` object that can be easily turned into several different representations. Try `.vex` for a PyVEX IRSB, or `.capstone` for a Capstone block.
 
@@ -64,15 +67,15 @@ Let's play with PyVEX:
 >>> import angr
 
 # load the program binary
->>> b = angr.Project("/bin/true")
+>>> proj = angr.Project("/bin/true")
 
 # translate the starting basic block
->>> irsb = b.factory.block(b.entry).vex
+>>> irsb = proj.factory.block(proj.entry).vex
 # and then pretty-print it
 >>> irsb.pp()
 
 # translate and pretty-print a basic block starting at an address
->>> irsb = b.factory.block(0x401340).vex
+>>> irsb = proj.factory.block(0x401340).vex
 >>> irsb.pp()
 
 # this is the IR Expression of the jump target of the unconditional exit at the end of the basic block
@@ -100,7 +103,7 @@ Let's play with PyVEX:
 ...         print ""
 
 # pretty-print the condition and jump target of every conditional exit from the basic block
-... for stmt in irsb.statements:
+>>> for stmt in irsb.statements:
 ...     if isinstance(stmt, pyvex.IRStmt.Exit):
 ...         print "Condition:",
 ...         stmt.guard.pp()
@@ -116,4 +119,19 @@ Let's play with PyVEX:
 >>> print irsb.tyenv.types[0]
 ```
 
-Keep in mind that this is a *syntactic* respresentation of a basic block. That is, it'll tell you what the block means, but you don't have any context to say, for example, what *actual* data is written by a store instruction. We'll get to that next.
+## Condition flags computation (for x86 and ARM)
+
+One of the most common instruction side-effects on x86 and ARM CPUs is updating condition flags, such as the zero flag, the carry flag, or the overflow flag.
+Computer architects usually put the concatenation of these flags (yes, concatenation of the flags, since each condition flag is 1 bit wide) into a special register (i.e. `EFLAGS`/`RFLAGS` on x86, `APSR`/`CPSR` on ARM).
+This special register stores important information about the program state, and is critical for correct emulation of the CPU.
+
+VEX uses 4 registers as its "Flag thunk descriptors" to record details of the latest flag-setting operation.
+VEX has a lazy strategy to compute the flags: when an operation that would update the flags happens, instead of computing the flags, VEX stores a code representing this operation to the `cc_op` pseudo-register, and the arguments to the operation in `cc_dep1` and `cc_dep2`.
+Then, whenever VEX needs to get the actual flag values, it can figure out what the one bit corresponding to the flag in question actually is, based on its flag thunk descriptors.
+This is an optimization in the flags computation, as VEX can now just directly perform the relevant operation in the IR without bothering to compute and update the flags' value.
+
+Amongst different operations that can be placed in `cc_op`, there is a special value 0 which corresponds to `OP_COPY` operation.
+This operation is supposed to copy the value in `cc_dep1` to the flags.
+It simply means that `cc_dep1` contains the flags' value.
+angr uses this fact to let us efficiently retrieve the flags' value: whenever we ask for the actual flags, angr computes their value, then dumps them back into `cc_dep1` and sets `cc_op = OP_COPY` in order to cache the computation.
+We can also use this operation to allow the user to write to the flags: we just set `cc_op = OP_COPY` to say that a new value being set to the flags, then set `cc_dep1` to that new value.

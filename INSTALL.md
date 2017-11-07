@@ -35,15 +35,15 @@ brew install gcc
 env CC=/usr/local/bin/gcc-6 pip install angr
 ```
 
-After installing angr, you will need to fix some shared libraries paths for simuvex.
+After installing angr, you will need to fix some shared library paths for the angr native libraries.
 
 ```bash
 BASEDIR=/usr/local/lib/python2.7/site-packages
 # If you don't know where your site-packages folder is, use this to find them:
 python2 -c "import site; print(site.getsitepackages())"
 
-install_name_tool -change libunicorn.1.dylib "$BASEDIR"/unicorn/lib/libunicorn.dylib "$BASEDIR"/simuvex/lib/sim_unicorn.dylib
-install_name_tool -change libpyvex.dylib "$BASEDIR"/pyvex/lib/libpyvex.dylib "$BASEDIR"/simuvex/lib/sim_unicorn.dylib
+install_name_tool -change libunicorn.1.dylib "$BASEDIR"/unicorn/lib/libunicorn.dylib "$BASEDIR"/angr/lib/angr_native.dylib
+install_name_tool -change libpyvex.dylib "$BASEDIR"/pyvex/lib/libpyvex.dylib "$BASEDIR"/angr/lib/angr_native.dylib
 ```
 
 ### Windows
@@ -58,7 +58,7 @@ We created a repo with scripts to make life easier for angr developers.
 You can set up angr in development mode by running:
 
 ```bash
-git clone https://github.com/angr/angr-dev
+git clone git@github.com:angr/angr-dev.git
 cd angr-dev
 mkvirtualenv angr
 ./setup.sh
@@ -131,3 +131,9 @@ Moving `libcapstone.so` to the same directory as that of Python files will fix t
 Are you running Ubuntu 12.04? If so, please stop using a 5 year old operating system! Upgrading is free!
 
 You can also try upgrading pip (`pip install -U pip`), which might solve the issue.
+
+## AttributeError: 'FFI' object has no attribute 'unpack'
+
+You have an outdated version of the `cffi` Python module.  angr now requires at least version 1.7 of cffi.
+Try `pip install --upgrade cffi`.  If the problem persists, make sure your operating system hasn't pre-installed an old version of cffi, which pip may refuse to uninstall.
+If you're using a Python virtual environment with the pypy interpreter, ensure you have a recent version of pypy, as it includes a version of cffi which pip will not upgrade.

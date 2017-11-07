@@ -3,6 +3,33 @@
 This lists the *major* changes in angr.
 Tracking minor changes are left as an exercise for the reader :-)
 
+## angr 7.7.9.8
+
+Welcome to angr 7!
+We worked long and hard all summer to make this release the best ever.
+It introduces several breaking changes, so for a quick guide on the most common ways you'll need to update your scripts, take a look at the [migration guide](MIGRATION.md).
+
+- SimuVEX has been removed and its components have been integrated into angr
+- Path has been removed and its components have been integrated into SimState, notably the new `history` state plugin
+- PathGroup has been renamed to SimulationManager
+- SimState and SimProcedure now have a reference to their parent Project, though it is verboten to use it in anything other than an append-only fashion
+- A new class SimLibrary is used to track SimProcedure and metadata corresponding to an individual shared library
+- Several CLE interfaces have been refactored up for consistency
+- Hook has been removed. Hooking is now done with individual SimProcedure instances, which are shallow-copied at execution time for thread-safety.
+- The `state.solver` interface has been cleaned up drastically
+
+These are the major refactor-y points.
+As for the improvements:
+
+- Greatly improved support for analyzing 32 bit windows binaries (partial credit @schieb)
+- Unicorn will now stop for stop points and breakpoints in the middle of blocks (credit @bennofs)
+- The processor flags for a state can now be accessed through `state.regs.eflags` on x86 and `state.regs.flags` on ARM (partial credit @tyb0807)
+- Fledgling support for emulating exception handling. Currently the only implementation of this is support for Structured Exception Handling on Windows, see `angr.SimOS.handle_exception` for details
+- Fledgling support for runtime library loading by treating the CLE loader as an append-only interface, though only implemented for windows. See `cle.Loader.dynamic_load` and `angr.procedures.win32.dynamic_loading` for details.
+- The knowledge base has been refactored into a series of plugins similar to SimState (credit @danse-macabre)
+- The testcase-based function identifier we wrote for CGC has been integrated into angr as the Identifier analysis
+- Improved support for writing custom VEX lifters
+
 ## angr 6.7.6.9
 
 - angr: A static data-flow analysis framework has been introduced, and implemented as part of the `ForwardAnalysis` class. Additionally, a few exemplary data-flow analyses, like `VariableRecovery` and `VariableRecoveryFast`, have been implemented in angr.
@@ -17,7 +44,7 @@ Tracking minor changes are left as an exercise for the reader :-)
 
 ## angr 6.7.3.26
 
-Building off of the engine changes from the last release, we have begun to extend angr to other architectures. AVR and MSP430 are in progress. In the meantime, subwire has created a reference implementation of BrainFuck support in angr, done two different ways! Check out [angr-bf](https://github.com/angr/angr-bf) for more info!
+Building off of the engine changes from the last release, we have begun to extend angr to other architectures. AVR and MSP430 are in progress. In the meantime, subwire has created a reference implementation of BrainFuck support in angr, done two different ways! Check out [angr-platforms](https://github.com/angr/angr-platforms) for more info!
 
 - We have rebased our fork of VEX on the latest master branch from Valgrind (as of 2 months ago, at least...). We have also submitted our patches to VEX to upstream, so we should be able to stop maintaining a fork pretty soon.
 - The way we interact with VEX has changed substancially, and should speed things up a bit.

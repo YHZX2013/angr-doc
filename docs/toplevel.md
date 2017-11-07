@@ -1,13 +1,18 @@
-# Top-level interfaces
+# Core Concepts
+
+Before getting started with angr, you'll need to have a basic overview of some fundamental angr concepts and how to construct some basic angr objects.
+We'll go over this by examining what's directly available to you after you've loaded a binary!
 
 Your first action with angr will always be to load a binary into a _project_. We'll use `/bin/true` for these examples.
 
-```py
+```python
 >>> import angr
 >>> proj = angr.Project('/bin/true')
 ```
 
-Before getting started with angr, you'll need to have a basic overview of some fundamental angr concepts and how to construct some basic angr objects. We'll go over this by examining what's directly available to you after you've loaded a project!
+A project is your control base in angr.
+With it, you will be able to dispatch analyses and simulations on the executable you just loaded.
+Almost every single object you work with in angr will depend on the existence of a project in some form.
 
 ## Basic properties
 
@@ -31,7 +36,7 @@ First, we have some basic properties about the project: its CPU architecture, it
 
 Getting from a binary file to its representation in a virtual address space is pretty complicated! We have a module called CLE to handle that. CLE's result, called the loader, is available in the `.loader` property. We'll get into detail on how to use this [soon](./loading.md), but for now just know that you can use it to see the shared libraries that angr loaded alongside your program and perform basic queries about the loaded address space.
 
-```py
+```python
 >>> proj.loader
 <Loaded true, maps [0x400000:0x5004000]>
 
@@ -39,17 +44,17 @@ Getting from a binary file to its representation in a virtual address space is p
 {'ld-linux-x86-64.so.2': <ELF Object ld-2.24.so, maps [0x2000000:0x2227167]>,
  'libc.so.6': <ELF Object libc-2.24.so, maps [0x1000000:0x13c699f]>}
 
->>> proj.loader.min_addr()
+>>> proj.loader.min_addr
 0x400000
->>> proj.loader.max_addr()
+>>> proj.loader.max_addr
 0x5004000
 
->>> proj.loader.main_bin  # we've loaded several binaries into this project. Here's the main one!
+>>> proj.loader.main_object  # we've loaded several binaries into this project. Here's the main one!
 <ELF Object true, maps [0x400000:0x60721f]>
 
->>> proj.loader.main_bin.execstack  # sample query: does this binary have an executable stack?
+>>> proj.loader.main_object.execstack  # sample query: does this binary have an executable stack?
 False
->>> proj.loader.main_bin.pic  # sample query: is this binary position-independent?
+>>> proj.loader.main_object.pic  # sample query: is this binary position-independent?
 True
 ```
 
@@ -64,7 +69,7 @@ This section will also serve as an introduction to several basic angr concepts. 
 First, we have `project.factory.block()`, which is used to extract a [basic block](https://en.wikipedia.org/wiki/Basic_block) of code from a given address. This is an important fact - _angr analyzes code in units of basic blocks._ You will get back a Block object, which can tell you lots of fun things about the block of code:
 
 ```python
->>> block = proj.factory.block(b.entry) # lift a block of code from the program's entry point
+>>> block = proj.factory.block(proj.entry) # lift a block of code from the program's entry point
 <Block for 0x401670, 42 bytes>
 
 >>> block.pp()                          # pretty-print a disassembly to stdout
@@ -115,14 +120,14 @@ A SimState contains a program's memory, registers, filesystem data... any "live 
 <BV32 0x8949ed31>
 ```
 
-Those aren't python ints! Those are _bitvectors_. Python integers don't have the same semantics as words on a CPU, e.g. wrapping on overflow, so we work with bitvectors, which you can think of as an integer as represented by a series of bits, to represent CPU data in angr. Note that each bitvector has a `.size` property describing how large it is.
+Those aren't python ints! Those are _bitvectors_. Python integers don't have the same semantics as words on a CPU, e.g. wrapping on overflow, so we work with bitvectors, which you can think of as an integer as represented by a series of bits, to represent CPU data in angr. Note that each bitvector has a `.length` property describing how wide it is in bits.
 
 We'll learn all about how to work with them soon, but for now, here's how to convert from python ints to bitvectors and back again:
 
 ```python
 >>> bv = state.solver.BVV(0x1234, 32)       # create a 32-bit-wide bitvector with value 0x1234
 <BV32 0x1234>                               # BVV stands for bitvector value
->>> state.solver.any_int(bv)                # convert to python int
+>>> state.solver.eval(bv)                # convert to python int
 0x1234
 ```
 
@@ -141,7 +146,7 @@ You can store these bitvectors back to registers and memory, or you can directly
 The `mem` interface is a little confusing at first, since it's using some pretty hefty python magic. The short version of how to use it is:
 
 * Use array\[index\] notation to specify an address
-* Use .&lt;type&gt; to specify that the memory should be interpreted as &lt;type&gt; \(common values: char, short, int, long, size\_t, dword, qword\)
+* Use `.<type>` to specify that the memory should be interpreted as &lt;type&gt; \(common values: char, short, int, long, size_t, uint8_t, uint16_t...\)
 * From there, you can either:
   * Store a value to it, either a bitvector or a python int
   * Use `.resolved` to get the value as a bitvector
@@ -156,7 +161,10 @@ Finally, if you try reading some more registers you may encounter a very strange
 <BV64 reg_48_11_64{UNINITIALIZED}>
 ```
 
-This is still a 64-bit bitvector, but it doesn't contain a numerical value. Instead, it has a name! This is called a _symbolic variable_ and it is the underpinning of symbolic execution. Don't panic! We will discuss all of this in detail in the _very_ next chapter of this book.
+This is still a 64-bit bitvector, but it doesn't contain a numerical value.
+Instead, it has a name!
+This is called a _symbolic variable_ and it is the underpinning of symbolic execution.
+Don't panic! We will discuss all of this in detail exactly two chapters from now.
 
 #### Simulation Managers
 
@@ -196,7 +204,7 @@ We've just performed a basic block's worth of symbolic execution! We can look at
 
 angr comes pre-packaged with several built-in analyses that you can use to extract some fun kinds of information from a program. Here they are:
 
-```python
+```
 >>> proj.analyses.            # Press TAB here in ipython to get an autocomplete-listing of everything:
  proj.analyses.BackwardSlice        proj.analyses.CongruencyCheck      proj.analyses.reload_analyses       
  proj.analyses.BinaryOptimizer      proj.analyses.DDG                  proj.analyses.StaticHooker          
@@ -214,7 +222,7 @@ A couple of these are documented later in this book, but in general, if you want
 # Originally, when we loaded this binary it also loaded all its dependencies into the same virtual address  space
 # This is undesirable for most analysis.
 >>> proj = angr.Project('/bin/true', auto_load_libs=False)
->>> cfg = proj.CFGFast()
+>>> cfg = proj.analyses.CFGFast()
 <CFGFast Analysis Result at 0x2d85130>
 
 # cfg.graph is a networkx DiGraph full of CFGNode instances
@@ -226,7 +234,7 @@ A couple of these are documented later in this book, but in general, if you want
 
 # To get the CFGNode for a given address, use cfg.get_any_node
 >>> entry_node = cfg.get_any_node(proj.entry)
->>> len(cfg.graph.successors(entry_node))
+>>> len(list(cfg.graph.successors(entry_node)))
 2
 ```
 
